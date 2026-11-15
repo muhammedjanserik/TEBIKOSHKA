@@ -19,12 +19,13 @@ def ensure_club_emojis(t):
  return changed
 
 def connect():
- url=os.environ.get('DATABASE_URL')
+ from database import database_url
+ url=database_url()
  if url:
   from database import PostgresConnection
   return PostgresConnection(url)
  if os.environ.get('VERCEL'):
-  raise RuntimeError('Set DATABASE_URL and apply schema.sql before deploying to Vercel')
+  raise RuntimeError('Connect a PostgreSQL database in Vercel Storage and redeploy')
  c=sqlite3.connect(DB,timeout=30); c.row_factory=sqlite3.Row
  c.executescript('CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,login TEXT UNIQUE,password TEXT); CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user INTEGER,expires REAL); CREATE TABLE IF NOT EXISTS tournaments(user INTEGER UNIQUE,data TEXT);')
  return c

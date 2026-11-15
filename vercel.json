@@ -3,7 +3,7 @@
   "framework": null,
   "functions": {
     "api/index.py": {
-      "includeFiles": "static/**",
+      "includeFiles": "{static/**,schema.sql}",
       "excludeFiles": "{tests/**,artifacts/**,**/__pycache__/**,*.sqlite3*}",
       "maxDuration": 60
     }
