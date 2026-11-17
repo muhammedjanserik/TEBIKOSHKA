@@ -132,6 +132,45 @@ class Flow(unittest.TestCase):
    self.assertEqual(self.call('state')['tournament']['high'],'none')
    self.call('setup_back',{})
    self.assertEqual(self.call('state')['tournament']['setup_stage'],'settings')
+ def test_score_limits_settings(self):
+  self.call('register',dict(login='limits',password='secret1'));self.call('create',{})
+  settings=dict(name='Балл ережесі',format='APF',count=2,high='none')
+  for low,high in [(20,25),(16,30),(65,75),(0,100),(20.5,25.5)]:
+   self.call('settings',dict(settings,score_min=low,score_max=high))
+   t=self.call('state')['tournament'];self.assertEqual((t['score_min'],t['score_max']),(low,high))
+  for low,high in [(25,25),(30,20),(-1,100),(True,100),(0,None),(0,'100')]:
+   self.call('settings',dict(settings,score_min=low,score_max=high),False)
+   t=self.call('state')['tournament'];self.assertEqual((t['score_min'],t['score_max']),(20.5,25.5))
+ def test_score_limits_results_and_new_round(self):
+  self.build('APF',3,2)
+  self.call('setup_back',{});self.call('setup_back',{})
+  self.call('settings',dict(name='Шектер',format='APF',count=2,score_min=20,score_max=25))
+  self.call('judge',dict(name='Төреші'));self.call('finish_registration',dict(allow_bye=True));self.call('start',{})
+  t=self.call('state')['tournament'];r=t['rounds'][-1]
+  r['rooms'][0]['judges']=[t['judges'][0]['id']]
+  self.call('confirm',dict(number=1,rooms=r['rooms']))
+  values={str(id):dict(rank=i+1,scores=[20,25]) for i,id in enumerate(r['rooms'][0]['teams'])}
+  first=next(iter(values))
+  for score in [19.9,25.1]:
+   bad={k:dict(v,scores=[score,25]) if k==first else v for k,v in values.items()}
+   self.call('result',dict(number=1,room='0',values=bad),False)
+   self.assertEqual(self.call('state')['tournament']['rounds'][-1]['results'],{})
+  self.call('result',dict(number=1,room='0',values=values))
+  self.call('result',dict(number=1,room='bye',values={str(r['bye']):dict(rank=1,scores=[26,20])}),False)
+  self.call('result',dict(number=1,room='bye',values={str(r['bye']):dict(rank=1,scores=[20,25])}))
+  self.call('next',dict(number=1))
+  t=self.call('state')['tournament'];self.assertEqual(t['rounds'][-1]['results'],{});self.assertTrue(t['rounds'][0]['results'])
+ def test_bpf_score_limits(self):
+  self.build('BPF',4,1)
+  self.call('setup_back',{});self.call('setup_back',{})
+  self.call('settings',dict(name='БПФ',format='BPF',count=1,score_min=65,score_max=75))
+  self.call('judge',dict(name='Төреші'));self.call('finish_registration',{});self.call('start',{})
+  t=self.call('state')['tournament'];rooms=t['rounds'][-1]['rooms'];rooms[0]['judges']=[t['judges'][0]['id']]
+  self.call('confirm',dict(number=1,rooms=rooms))
+  values={str(id):dict(rank=i+1,scores=[65,75]) for i,id in enumerate(rooms[0]['teams'])}
+  first=next(iter(values));values[first]['scores']=[64,75]
+  self.call('result',dict(number=1,room='0',values=values),False)
+  values[first]['scores']=[65,75];self.call('result',dict(number=1,room='0',values=values))
  def test_registration_workflow(self):
   self.call('register',{'login':'user','password':'secret1'});self.call('create',{})
   settings=dict(name='Жаңа турнир',format='BPF',count=5,high='previous',high_rounds=[2,5],playoff=True)

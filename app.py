@@ -4,7 +4,7 @@ from http.cookies import SimpleCookie
 from xml.sax.saxutils import escape
 
 DB=os.environ.get('TAB_DB','tab.sqlite3')
-SETUP_API_VERSION=3
+SETUP_API_VERSION=4
 POSITIONS={'APF':['Үкімет','Оппозиция'],'BPF':['Ашушы үкімет','Ашушы оппозиция','Жабушы үкімет','Жабушы оппозиция']}
 CLUB_EMOJIS=('🐾','🐱','🦊','🐼','🐯','🦁','🐸','🐨','🐧','🦉','🦋','🐝','🐙','🐳','🦄','🐢','🦀','🦜','🐬','🦔','🌻','🌵','🍀','🍄','🌈','⭐','🔥','⚡','🌙','🍒','🍋','🍉','🥑','🎯','🎨','🎸','🚀','🧩','💎','🏆','🎈','🪁','🦚','🦩','🦦','🦥','🐿️','🦌','🐲','🌸','🌊','🪐','🍓','🥝','🍊','🎲','🎭','🎺','⛵','🏔️','🪷','🍍','🦕','🦈')
 def ensure_club_emojis(t):
@@ -142,6 +142,12 @@ def export(t):
    z.writestr(f'xl/worksheets/sheet{i}.xml','<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+''.join(xml)+'</sheetData></worksheet>')
  return out.getvalue()
 
+def score_limits(t,d):
+ low=d.get('score_min',t.get('score_min',0)); high=d.get('score_max',t.get('score_max',100))
+ require(all(type(v) in (int,float) and math.isfinite(v) for v in (low,high)),'Балл шектерін санмен енгізіңіз')
+ require(0<=low<high,'Минимум балл нөлден кем емес және максимум баллдан кіші болуы керек')
+ return {'score_min':low,'score_max':high}
+
 def mutate(t,action,d):
  if action=='settings':
   require(t['status']=='setup','Баптау аяқталған')
@@ -151,6 +157,8 @@ def mutate(t,action,d):
   require(high in ['none','previous','all'],'High/Low режимі қате')
   selected=d.get('high_rounds',[])
   require(isinstance(selected,list) and all(type(n)==int and 2<=n<=d['count'] for n in selected),'Раунд таңдауы қате')
+  limits=score_limits(t,d)
+  t.update(limits)
   t.update(name=d['name'].strip(),format=d['format'],count=d['count'],high='none' if high=='previous' and not selected else high,high_rounds=selected,setup_stage='registration',registration_complete=False,step=2)
  elif action=='finish_registration':
   require(t['status']=='setup','Турнир басталған')
@@ -164,6 +172,7 @@ def mutate(t,action,d):
   require(t['status']=='setup','Баптау аяқталған')
   step=int(d['step']); require(0<=step<=4 and step==t['step'],'Қадам қате')
   if step==0:
+   t.update(score_limits(t,d))
    require(d['name'].strip() and d['format'] in POSITIONS,'Атау мен форматты енгізіңіз'); t.update(name=d['name'].strip(),format=d['format'],playoff=bool(d.get('playoff')))
   elif step==1: require(isinstance(d['count'],int) and 1<=d['count']<=30,'Раунд саны: 1–30'); t['count']=d['count']
   elif step==2:
@@ -205,6 +214,8 @@ def mutate(t,action,d):
   ranks=[]
   for v in values.values():
    require(isinstance(v.get('scores'),list) and len(v['scores'])==2 and all(type(s) in (int,float) and math.isfinite(s) and s>=0 for s in v['scores']),'Спикер балдарын санмен енгізіңіз'); require(type(v.get('rank'))==int,'Рангті таңдаңыз'); ranks.append(v['rank'])
+   low=t.get('score_min',0); high=t.get('score_max',float('inf'))
+   require(all(low<=s<=high for s in v['scores']),f'Спикер балдары {low}–{high} аралығында болуы керек')
   require(ranks==[1] if key=='bye' else sorted(ranks)==([1,2] if t['format']=='APF' else [1,2,3,4]),'Жеңімпазды таңдаңыз немесе 1–4 рангтерін қайталамай енгізіңіз'); r['results'][key]=values
  elif action=='next':
   require(t['status']=='active','Іріктеу аяқталған')
