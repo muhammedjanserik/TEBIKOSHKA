@@ -182,6 +182,20 @@ def mutate(t,action,d):
   elif step==4: ready(t)
   t['step']=step+1
  elif action=='back': require(t['status']=='setup','Баптау аяқталған'); t['step']=max(0,t['step']-1)
+ elif action=='import_teams':
+  require(t['status']=='setup','Турнир басталған')
+  text=d.get('text'); require(isinstance(text,str),'Мәтінді енгізіңіз')
+  pending=[]; names={x['name'] for x in t['teams']}
+  for n,line in enumerate(text.splitlines(),1):
+   if not line.strip(): continue
+   cells=[v.strip() for v in line.split('|')]
+   if cells in [['Фракция атауы','Клуб','Бірінші спикер','Екінші спикер','Клэш'],['Фракция атауы','Клуб','Бірінші спикер','Екінші спикер']]: continue
+   require(len(cells) in (4,5),f'{n}-жолда 4 немесе 5 баған болуы керек')
+   for i,label in enumerate(['фракция атауы','клуб','бірінші спикер','екінші спикер']): require(cells[i],f'{n}-жолда {label} көрсетілмеген')
+   require(cells[0] not in names,f'{n}-жолда фракция қайталанады')
+   names.add(cells[0]); pending.append(dict(name=cells[0],club=cells[1],speaker1=cells[2],speaker2=cells[3],clashes=cells[4] if len(cells)==5 else ''))
+  require(pending,'Кемінде бір фракция енгізіңіз')
+  for item in pending: mutate(t,'team',item)
  elif action=='team':
   require(t['status']=='setup','Турнир басталған'); require(all(str(d.get(k,'')).strip() for k in ['name','speaker1','speaker2']),'Барлық өрісті толтырыңыз')
   existing=next((x for x in t['teams'] if x['id']==d.get('id')),{})
