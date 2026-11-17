@@ -4,6 +4,15 @@ import sqlite3
 import os
 import threading
 from pathlib import Path
+from urllib.parse import urlsplit
+
+
+def report_database_error(exc, stage):
+    """Log only fixed stage names, exception classes and SQLSTATE, never values."""
+    state = getattr(exc, 'sqlstate', None)
+    if not isinstance(state, str) or not re.fullmatch(r'[A-Z0-9]{5}', state):
+        state = 'none'
+    print(f'DB_ERROR stage={stage} type={type(exc).__name__} sqlstate={state}', flush=True)
 
 
 _initialized = set()
@@ -22,7 +31,20 @@ class PostgresConnection:
     def __init__(self, url):
         import psycopg
         from psycopg.rows import dict_row
-        self.connection = psycopg.connect(url, row_factory=dict_row, connect_timeout=10)
+        try:
+            self.connection = psycopg.connect(url, row_factory=dict_row, connect_timeout=10)
+        except Exception as exc:
+            report_database_error(exc, 'connect')
+            # Classify common setup mistakes without printing any connection data.
+            try:
+                parsed = urlsplit(url)
+                host = parsed.hostname or ''
+                placeholder = host == 'example.com' or host.endswith('.example.com')
+                shape = 'placeholder' if placeholder else ('postgres_uri' if parsed.scheme in ('postgres', 'postgresql') else 'other')
+            except ValueError:
+                shape = 'invalid_uri'
+            print(f'DB_CONFIG format={shape}', flush=True)
+            raise
         try:
             with _schema_lock:
                 if url not in _initialized:
@@ -37,7 +59,8 @@ class PostgresConnection:
                             self.connection.execute(statement)
                     self.connection.commit()
                     _initialized.add(url)
-        except Exception:
+        except Exception as exc:
+            report_database_error(exc, 'schema')
             self.connection.close()
             raise
 
@@ -53,6 +76,9 @@ class PostgresConnection:
             return self.connection.execute(sql, params)
         except psycopg.IntegrityError as exc:
             raise sqlite3.IntegrityError(str(exc)) from exc
+        except Exception as exc:
+            report_database_error(exc, 'query')
+            raise
 
     def commit(self):
         self.connection.commit()
